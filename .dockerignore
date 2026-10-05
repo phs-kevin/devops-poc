@@ -1,0 +1,7 @@
+.git
+.claude
+.github
+deploy
+infra
+__pycache__
+*.pyc
