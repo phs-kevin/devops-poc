@@ -21,7 +21,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:environment:${each.value.gh_environment}"]
+      values   = ["${var.github_sub_prefix}:environment:${each.value.gh_environment}"]
     }
   }
 }
