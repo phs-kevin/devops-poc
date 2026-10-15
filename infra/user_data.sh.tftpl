@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euxo pipefail
+dnf install -y docker
+systemctl enable --now docker
+
+mkdir -p /opt/shn
+cat > /opt/shn/env <<'ENV'
+REGION=${region}
+REGISTRY=${registry}
+REPO=${repo}
+SECRET_ID=${secret_id}
+ENV
+cat > /opt/shn/run.sh <<'RUN'
+${run_sh}
+RUN
+chmod 755 /opt/shn/run.sh

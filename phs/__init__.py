@@ -2,12 +2,31 @@ import json
 import os
 
 import boto3
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template_string
 
 from . import config
 
 # Env vars that override the defaults in config.py
 ENV_KEYS = ("AWS_REGION", "AWS_SECRET_ID", "IMAGE_TAG")
+
+INDEX_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>shn-site</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
+    code { background: #f2f2f2; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>shn-site</h1>
+  <p>Running image <code>{{ image_tag }}</code>.</p>
+  <p><a href="/health">/health</a> &middot; <a href="/whoami">/whoami</a></p>
+</body>
+</html>
+"""
 
 
 def configure_app(app):
@@ -26,6 +45,10 @@ def configure_app(app):
 def create_app():
     app = Flask(__name__)
     configure_app(app)
+
+    @app.get("/")
+    def index():
+        return render_template_string(INDEX_HTML, image_tag=app.config.get("IMAGE_TAG", "dev"))
 
     @app.get("/health")
     def health():
