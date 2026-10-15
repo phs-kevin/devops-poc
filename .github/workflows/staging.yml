@@ -1,0 +1,15 @@
+name: staging
+
+on:
+  push:
+    branches: [staging]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    environment: staging
+    steps:
+      - run: echo "merge detected on staging (${{ github.sha }})"
