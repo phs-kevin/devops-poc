@@ -1,5 +1,6 @@
 name: staging
 
+# Build once, label the image with the commit ID, deploy it to staging.
 on:
   push:
     branches: [staging]
@@ -8,14 +9,37 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-22.04
     environment: staging
+    env:
+      TAG: sha-${{ github.sha }}
     steps:
       - run: echo "merge detected on staging (${{ github.sha }})"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0, OIDC, no stored keys
         with:
           role-to-assume: ${{ vars.STAGING_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - run: aws sts get-caller-identity
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        id: ecr
+      - name: Build and push (skipped if this commit was already built; tags are immutable)
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/devops-poc/shn-site:sha-${{ github.sha }}
+        run: |
+          if aws ecr describe-images --repository-name devops-poc/shn-site --image-ids imageTag=$TAG >/dev/null 2>&1; then
+            echo "$TAG already in ECR, not rebuilding"
+          else
+            docker build --build-arg GIT_SHA=${{ github.sha }} -t $IMAGE .
+            docker push $IMAGE
+          fi
+      - name: Deploy
+        env:
+          TARGET_GROUP_ARN: ${{ vars.TARGET_GROUP_ARN }}
+          AUTO_ROLLBACK: ${{ vars.AUTO_ROLLBACK }}
+        run: ./deploy/deploy_host.sh ${{ vars.STAGING_INSTANCE_ID }} $TAG
