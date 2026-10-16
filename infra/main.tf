@@ -7,7 +7,10 @@ terraform {
 }
 
 provider "aws" {
-  region = var.region
+  region  = var.region
+  profile = var.aws_profile
+  # Refuse to run if the profile points at any other account.
+  allowed_account_ids = [var.aws_account_id]
   default_tags {
     tags = { project = "devops-poc", managed_by = "terraform" }
   }
