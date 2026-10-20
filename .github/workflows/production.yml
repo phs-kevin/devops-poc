@@ -1,7 +1,10 @@
 name: production
 
 # Promote the image staging built for this commit, then a rolling deploy.
-# Release: push a vX.Y.Z tag on master. The image gets the semver tag X.Y.Z.
+# Release, either:
+#   - GitHub Releases: draft a release with a new vX.Y.Z tag targeting staging, or
+#   - CLI: fast-forward master to staging, push a vX.Y.Z tag.
+# The image gets the semver tag X.Y.Z; master is fast-forwarded after a release.
 # Rollback: run this workflow manually on an older vX.Y.Z tag.
 on:
   push:
@@ -34,10 +37,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Check the tagged commit is on master
+      # master only ever fast-forwards to staging, so this covers tags made either way.
+      - name: Check the tagged commit is on staging
         run: |
-          git merge-base --is-ancestor HEAD origin/master || {
-            echo "::error::$GITHUB_REF_NAME ($(git rev-parse --short HEAD)) is not on master; fast-forward master to staging first"
+          git merge-base --is-ancestor HEAD origin/staging || {
+            echo "::error::$GITHUB_REF_NAME ($(git rev-parse --short HEAD)) is not on staging; release a commit that went through staging"
             exit 1
           }
 
@@ -60,3 +64,27 @@ jobs:
           TARGET_GROUP_ARN: ${{ vars.TARGET_GROUP_ARN }}
           AUTO_ROLLBACK: ${{ vars.AUTO_ROLLBACK }}
         run: for id in ${{ vars.PROD_INSTANCE_IDS }}; do ./deploy/deploy_host.sh "$id" "$VERSION"; done
+
+  # Keep master equal to what production runs. Releases made in the GitHub UI
+  # tag staging, so master is still behind; CLI releases and rollbacks are no-ops.
+  sync-master:
+    needs: deploy
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Fast-forward master to the released commit
+        run: |
+          if git merge-base --is-ancestor HEAD origin/master; then
+            echo "master already contains $GITHUB_REF_NAME"
+          elif git merge-base --is-ancestor origin/master HEAD; then
+            # A plain push refuses anything but a fast-forward.
+            git push origin "HEAD:refs/heads/master" || {
+              echo "::warning::Could not fast-forward master to $GITHUB_REF_NAME (the built-in token can't push commits that change workflow files). Run: git checkout master && git merge --ff-only $GITHUB_REF_NAME && git push"
+            }
+          else
+            echo "::warning::master has diverged from $GITHUB_REF_NAME; fix it by hand"
+          fi
