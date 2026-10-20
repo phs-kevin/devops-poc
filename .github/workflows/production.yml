@@ -1,0 +1,62 @@
+name: production
+
+# Promote the image staging built for this commit, then a rolling deploy.
+# Release: push a vX.Y.Z tag on master. The image gets the semver tag X.Y.Z.
+# Rollback: run this workflow manually on an older vX.Y.Z tag.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: production-deploy # never two at once
+  cancel-in-progress: false
+
+jobs:
+  # Runs before the approval gate, so approvers only see valid releases.
+  verify:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check this is a vX.Y.Z tag
+        id: version
+        run: |
+          if [[ $GITHUB_REF_TYPE != tag || ! $GITHUB_REF_NAME =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Run this on a vX.Y.Z tag, not $GITHUB_REF_TYPE '$GITHUB_REF_NAME'"
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check the tagged commit is on master
+        run: |
+          git merge-base --is-ancestor HEAD origin/master || {
+            echo "::error::$GITHUB_REF_NAME ($(git rev-parse --short HEAD)) is not on master; fast-forward master to staging first"
+            exit 1
+          }
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-22.04
+    environment: production # approval required
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0, OIDC, no stored keys
+        with:
+          role-to-assume: ${{ vars.PROD_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Label the staged image (no rebuild; fails if this commit never went through staging)
+        run: ./deploy/promote.sh "sha-$(git rev-parse HEAD)" "$VERSION"
+      - name: Rolling deploy (stops at the first failure)
+        env:
+          TARGET_GROUP_ARN: ${{ vars.TARGET_GROUP_ARN }}
+          AUTO_ROLLBACK: ${{ vars.AUTO_ROLLBACK }}
+        run: for id in ${{ vars.PROD_INSTANCE_IDS }}; do ./deploy/deploy_host.sh "$id" "$VERSION"; done
