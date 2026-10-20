@@ -3,6 +3,17 @@ variable "region" {
   default = "us-east-2"
 }
 
+# A dedicated CLI profile keeps Terraform off whatever the default login is.
+variable "aws_profile" {
+  type    = string
+  default = "devops-poc"
+}
+
+# Set in terraform.tfvars.
+variable "aws_account_id" {
+  type = string
+}
+
 # The repo uses GitHub's immutable OIDC subject (owner and repo IDs included), so a
 # renamed or re-created repo with the same name can't assume the deploy roles.
 # Check with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
