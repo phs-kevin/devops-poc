@@ -22,6 +22,7 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
   <h1>shn-site</h1>
+  <p> Added from new branch :)</p>
   <p>Running image <code>{{ image_tag }}</code>.</p>
   <p><a href="/health">/health</a> &middot; <a href="/whoami">/whoami</a></p>
 </body>
